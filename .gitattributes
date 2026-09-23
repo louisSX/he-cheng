@@ -1,0 +1,9 @@
+# 文本文件统一 LF（覆盖全局 core.autocrlf，跨平台一致）
+* text=auto eol=lf
+
+# 二进制素材
+*.png binary
+*.gif binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
