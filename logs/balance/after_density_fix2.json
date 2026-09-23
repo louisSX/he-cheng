@@ -1,0 +1,203 @@
+{
+  "version": "1.0",
+  "timestamp_utc": "2026-08-06T09:04:26.771Z",
+  "run_config": {
+    "seed_set": [
+      2001,
+      2002,
+      2003
+    ],
+    "fixed_dt": 0.016666666666666666,
+    "max_ticks": 3600,
+    "policy_budget": "variants=20 per seed for exploratory",
+    "input_schema": {
+      "move_x": {
+        "type": "axis",
+        "range": [
+          -1,
+          1
+        ],
+        "neutral": 0
+      },
+      "move_y": {
+        "type": "axis",
+        "range": [
+          -1,
+          1
+        ],
+        "neutral": 0
+      }
+    },
+    "visible_state_schema": [
+      "player_position",
+      "player_level",
+      "player_radius",
+      "progress",
+      "creatures",
+      "bounds"
+    ],
+    "policy_visibility": {
+      "no_input": [],
+      "fixed_direction": [],
+      "greedy_nearest_prey": [
+        "player_position",
+        "creatures"
+      ],
+      "greedy_nearest_same": [
+        "player_position",
+        "creatures"
+      ],
+      "exploratory": [
+        "player_position",
+        "player_level",
+        "player_radius",
+        "progress",
+        "creatures",
+        "bounds"
+      ]
+    }
+  },
+  "monotonous": {
+    "cases": {
+      "no_input": {
+        "score": 4,
+        "elapsed": 60,
+        "ended": true
+      },
+      "fixed_direction": {
+        "score": 2,
+        "elapsed": 51.56666666666666,
+        "ended": true
+      },
+      "greedy_nearest_prey": {
+        "score": 4,
+        "elapsed": 50.71666666666667,
+        "ended": true
+      },
+      "greedy_nearest_same": {
+        "score": 56,
+        "elapsed": 60,
+        "ended": true
+      }
+    },
+    "max_score": 56
+  },
+  "exploratory": {
+    "best": {
+      "score": 74,
+      "elapsed": 60,
+      "ended": true
+    },
+    "best_seed": 2002,
+    "best_variant": 5
+  },
+  "exploratory_ratio": 1.3214285714285714,
+  "telemetry": {
+    "death_analysis": {
+      "total": 17,
+      "game_over_runs": 17,
+      "by_player_level": {
+        "0": 11,
+        "1": 1,
+        "2": 4,
+        "3": 1
+      },
+      "by_predator_level": {
+        "1": 11,
+        "2": 1,
+        "3": 4,
+        "4": 1
+      },
+      "by_cause": {
+        "eaten": 17
+      },
+      "position_grid_4x4": [
+        1,
+        0,
+        0,
+        2,
+        1,
+        0,
+        1,
+        1,
+        0,
+        0,
+        0,
+        2,
+        4,
+        3,
+        1,
+        1
+      ],
+      "deaths_with_recent_input": 0,
+      "death_rate": 0.2361111111111111
+    },
+    "spawn_analysis": {
+      "total": 9509,
+      "by_level": [
+        4621,
+        2144,
+        1427,
+        889,
+        307,
+        98,
+        15,
+        7,
+        1,
+        0
+      ],
+      "min_dist_to_player": 45.024710083719626,
+      "max_dist_to_player": 2759.270436928871,
+      "avg_dist_to_player": 1080.9374261483285,
+      "safety_factor_applied": 3
+    },
+    "scoring_analysis": {
+      "total_score_all_runs": 1547,
+      "by_reason": {
+        "prey": {
+          "count": 217,
+          "sum": 217
+        },
+        "same": {
+          "count": 400,
+          "sum": 800
+        },
+        "evolve": {
+          "count": 106,
+          "sum": 530
+        }
+      },
+      "scoring_routes": 3,
+      "score_is_input_fact": false
+    },
+    "input_analysis": {
+      "per_policy": {
+        "no_input": {
+          "changes": 0,
+          "ticks": 10800,
+          "runs": 3
+        },
+        "fixed_direction": {
+          "changes": 0,
+          "ticks": 7185,
+          "runs": 3
+        },
+        "greedy_nearest_prey": {
+          "changes": 4157,
+          "ticks": 9482,
+          "runs": 3
+        },
+        "greedy_nearest_same": {
+          "changes": 9819,
+          "ticks": 10800,
+          "runs": 3
+        },
+        "exploratory": {
+          "changes": 201929,
+          "ticks": 201989,
+          "runs": 60
+        }
+      }
+    }
+  }
+}

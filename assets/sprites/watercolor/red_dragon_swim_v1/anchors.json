@@ -1,0 +1,38 @@
+{
+  "01_glide": {
+    "w": 168,
+    "h": 505,
+    "anchorX": 76,
+    "anchorY": 232.5
+  },
+  "02_compress": {
+    "w": 178,
+    "h": 497,
+    "anchorX": 104,
+    "anchorY": 232.5
+  },
+  "03_push": {
+    "w": 225,
+    "h": 501,
+    "anchorX": 130,
+    "anchorY": 232.5
+  },
+  "04_extend": {
+    "w": 163,
+    "h": 500,
+    "anchorX": 75,
+    "anchorY": 252.5
+  },
+  "05_retract": {
+    "w": 207,
+    "h": 493,
+    "anchorX": 121,
+    "anchorY": 252.5
+  },
+  "06_settle": {
+    "w": 178,
+    "h": 492,
+    "anchorX": 113,
+    "anchorY": 252.5
+  }
+}

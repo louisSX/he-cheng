@@ -1,0 +1,14 @@
+{
+  "name": "he-cheng",
+  "version": "0.1.0",
+  "description": "合成吞噬进化 · Web 单机（Merge + 大鱼吃小鱼）",
+  "type": "module",
+  "scripts": {
+    "sim": "node sim/run.js",
+    "serve": "python3 -m http.server 8080 -d ."
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "playwright": "^1.62.1"
+  }
+}

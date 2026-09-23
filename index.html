@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>合成吞噬进化</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #06202f; font-family: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; }
+    #game { display: block; width: 100vw; height: 100vh; cursor: crosshair; touch-action: none; }
+
+    #hud {
+      position: fixed; inset: 0; pointer-events: none; color: #eaf6ff;
+      text-shadow: 0 1px 3px rgba(0,0,0,0.6); z-index: 10;
+    }
+    #hud .left {
+      position: absolute; top: 14px; left: 16px;
+      background: rgba(6,32,47,0.55); border-radius: 10px; padding: 10px 14px;
+      backdrop-filter: blur(4px); min-width: 170px;
+    }
+    #hud .level { font-size: 16px; font-weight: 700; }
+    #hud .progress-track { margin-top: 6px; height: 8px; border-radius: 4px; background: rgba(255,255,255,0.18); overflow: hidden; }
+    #hud .progress-fill { height: 100%; width: 0; background: linear-gradient(90deg, #ffd75e, #ffb84d); border-radius: 4px; transition: width 0.15s linear; }
+    #hud .progress-label { margin-top: 3px; font-size: 11px; color: rgba(234,246,255,0.75); }
+    #hud .right {
+      position: absolute; top: 14px; right: 16px; text-align: right;
+      background: rgba(6,32,47,0.55); border-radius: 10px; padding: 10px 14px;
+      backdrop-filter: blur(4px); font-size: 14px; line-height: 1.6;
+    }
+    #hud .hint {
+      position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
+      font-size: 12px; color: rgba(234,246,255,0.7); background: rgba(6,32,47,0.5);
+      padding: 5px 12px; border-radius: 20px; white-space: nowrap;
+    }
+
+    /* 左下角小地图 */
+    #minimap {
+      position: fixed; left: 16px; bottom: 16px; z-index: 10;
+      border: 1px solid rgba(120,200,255,0.45); border-radius: 8px;
+      background: rgba(6,32,47,0.65); pointer-events: none;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.35);
+    }
+    /* ESC 暂停遮罩 */
+    #pause-overlay {
+      position: fixed; inset: 0; z-index: 25; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 12px;
+      background: rgba(4,16,26,0.6); backdrop-filter: blur(2px); color: #eaf6ff;
+    }
+    #pause-overlay .ptitle { font-size: 34px; font-weight: 800; letter-spacing: 6px; }
+    #pause-overlay .psub { font-size: 15px; color: rgba(234,246,255,0.75); }
+    #pause-overlay.hidden { display: none; }
+
+    #loading {
+      position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+      color: #eaf6ff; font-size: 18px; z-index: 20; background: #06202f;
+    }
+
+    #death-overlay {
+      position: fixed; inset: 0; z-index: 30; display: flex; align-items: center; justify-content: center;
+      background: rgba(4,16,26,0.72); backdrop-filter: blur(3px);
+    }
+    #death-overlay.hidden { display: none; }
+    #death-overlay .panel {
+      background: linear-gradient(160deg, #0d3550, #08263b);
+      border: 1px solid rgba(120,200,255,0.25); border-radius: 16px;
+      padding: 26px 34px; text-align: center; color: #eaf6ff; min-width: 300px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    }
+    #death-overlay .panel .btns { display: flex; gap: 10px; justify-content: center; margin-top: 18px; }
+    #death-overlay .panel .btns button {
+      padding: 10px 22px; font-size: 15px; font-weight: 700; cursor: pointer;
+      border: none; border-radius: 24px;
+    }
+    #continue-btn {
+      color: #08263b; background: linear-gradient(90deg, #7ee8a0, #4dd17c);
+      box-shadow: 0 4px 14px rgba(77,209,124,0.35);
+    }
+    #continue-btn:hover { transform: translateY(-1px); }
+    #continue-btn.hidden { display: none; }
+    #restart-btn {
+      color: #08263b; background: linear-gradient(90deg, #ffd75e, #ffb84d);
+      box-shadow: 0 4px 14px rgba(255,184,77,0.35);
+    }
+    #restart-btn:hover { transform: translateY(-1px); }
+    #death-overlay .title { font-size: 26px; font-weight: 800; margin-bottom: 16px; letter-spacing: 2px; }
+    #death-overlay .stat { margin: 7px 0; font-size: 15px; color: rgba(234,246,255,0.85); }
+    #death-overlay .stat b { color: #fff; }
+    #death-overlay .newbest { color: #ffd75e; font-weight: 700; }
+  </style>
+</head>
+<body>
+  <canvas id="game"></canvas>
+  <canvas id="minimap"></canvas>
+
+  <div id="pause-overlay" class="hidden">
+    <div class="ptitle">⏸ 已暂停</div>
+    <div class="psub">按 ESC 继续游戏</div>
+  </div>
+
+  <div id="hud">
+    <div class="left">
+      <div class="level" id="hud-level">Lv.1 · 蝌蚪</div>
+      <div class="progress-track"><div class="progress-fill" id="hud-progress"></div></div>
+      <div class="progress-label">合成进度：吃 3 只同级进化</div>
+    </div>
+    <div class="right">
+      <div id="hud-score">得分 0</div>
+      <div id="hud-time">0s</div>
+    </div>
+    <div class="hint">🖱 鼠标指向游动 · ⌨️ WASD / 方向键 · 同级 3 只进化 · 小心比你大的！</div>
+  </div>
+
+  <div id="loading">加载素材中…</div>
+
+  <div id="death-overlay" class="hidden">
+    <div class="panel">
+      <div class="title">🐟 被吞掉了…</div>
+      <div id="death-stats"></div>
+      <div class="btns">
+        <button id="continue-btn" class="hidden">继续玩</button>
+        <button id="restart-btn">再来一局</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="./render/main.js"></script>
+</body>
+</html>
