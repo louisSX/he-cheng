@@ -17,6 +17,27 @@ export const EVOLUTION = [
   { name: '深海巨兽', radius: 100 }, // 直径 200（链外传奇捕食者：玩家不可进化，永远比红龙大）
 ];
 export const MAX_LEVEL = EVOLUTION.length;
+
+// 游动步态（按 level，与 EVOLUTION 下标一致）：划水节奏驱动真实速度起伏，渲染层动画同步读取。
+//   freq  : 动画/划水频率（相位倍率，渲染关键帧也用此值）
+//   beats : 每个动画循环内的发力次数（摆尾类左右各一次 = 2）
+//   peak  : 发力峰值在单拍内的位置（0..1，对齐关键帧里的蹬水/摆尾过中线）
+//   width : 发力脉冲宽度（越小越短促）
+//   amp   : 速度起伏幅度（均值恒为 1，平均速度不变，平衡不受步态影响）
+//   turnDeg: AI 每 tick 最大转向角（度）；体型越大转身越慢
+export const GAIT = [
+  { freq: 1.35, beats: 2, peak: 0.50, width: 0.14, amp: 0.25, turnDeg: 6.0 }, // 蝌蚪：左右摆尾，轻微脉动
+  { freq: 1.05, beats: 1, peak: 0.40, width: 0.12, amp: 0.90, turnDeg: 5.0 }, // 青蛙：蹬水猛冲 → 滑行
+  { freq: 1.15, beats: 1, peak: 0.45, width: 0.12, amp: 0.60, turnDeg: 4.5 }, // 龙虾：泳足划动
+  { freq: 0.95, beats: 2, peak: 0.50, width: 0.16, amp: 0.20, turnDeg: 4.0 }, // 鲤鱼
+  { freq: 0.72, beats: 1, peak: 0.45, width: 0.18, amp: 0.50, turnDeg: 3.0 }, // 乌龟：前鳍慢划
+  { freq: 0.82, beats: 2, peak: 0.50, width: 0.18, amp: 0.15, turnDeg: 2.8 }, // 鳄鱼
+  { freq: 1.55, beats: 2, peak: 0.50, width: 0.20, amp: 0.12, turnDeg: 3.2 }, // 鲨鱼：稳定巡航
+  { freq: 0.78, beats: 1, peak: 0.50, width: 0.20, amp: 0.30, turnDeg: 1.8 }, // 鲸鱼：尾鳍拍水
+  { freq: 0.70, beats: 2, peak: 0.50, width: 0.20, amp: 0.12, turnDeg: 2.2 }, // 青龙：S 波
+  { freq: 0.58, beats: 2, peak: 0.50, width: 0.20, amp: 0.12, turnDeg: 2.0 }, // 红龙
+  { freq: 0.66, beats: 1, peak: 0.50, width: 0.16, amp: 0.35, turnDeg: 1.6 }, // 深海巨兽：触手喷射
+];
 export const MAX_PLAYER_LEVEL = 10; // 玩家进化上限（红龙）；深海巨兽是链外威胁
 
 export const CONFIG = {
@@ -45,10 +66,13 @@ export const CONFIG = {
 
   // 同级互吃（SPEC 1.5）：会挣脱，小概率跑掉
   escapeChance: 0.3,     // 挣脱概率
-  escapeDist: [150, 300],// 挣脱弹开距离区间 px
-  escapeCooldown: 90,    // 挣脱后多少 tick 内不可再被吃（防反复刷）
+  escapeCooldown: 90,    // 挣脱后多少 tick 内不会再次挣脱（期间被追上即被吃）
+  escapeSlipTicks: 30,   // 挣脱瞬间的滑脱窗口：该时段内与玩家接触不判定（替代原瞬移弹开）
   escapeBoostFactor: 1.35, // 挣脱后短暂加速逃跑
+  escapeBurst: 2.0,      // 挣脱爆发额外倍率，按 (剩余/总时长)^3 衰减 → 起步猛冲后回落
   escapeBoostTicks: 120,
+  escapeTurnFactor: 3,   // 挣脱冲刺期间转向速度倍率（快速掉头逃离）
+  escapeJitter: 1.2,     // 逃离方向随机偏角幅度（弧度）
 
   // 进化奖励：小概率生成低级素材辅助下一阶段起手（SPEC 1.6 可选）
   evolveSpawnChance: 0.2,
@@ -80,6 +104,18 @@ export const CONFIG = {
   aiFleeDist: 320,         // AI 逃离更大生物/玩家的距离
   aiTurnInterval: [120, 300], // AI 决策间隔 tick 区间
   aiCruiseTurn: 0.5,       // 巡航随机转向弧度幅度
+  aiWallMargin: 80,        // 距边界该距离内且朝向墙 → 提前转向离墙（平滑转身替代瞬间反弹）
+
+  // 捕食者扑击（真实捕食行为）：比玩家大的生物近距离时 蓄势 → 猛冲追踪 → 冷却。
+  // 平滑转向让捕食者变钝后，靠扑击把危险感补回来；蓄势期有红圈预警，保证死亡可读（SPEC 2.11）。
+  lungeMinPlayerLevel: 2,  // 玩家 ≥ 该等级（Lv.3 龙虾）才会被扑击：新手期（蝌蚪/青蛙）不启用，防开局被秒
+  lungeDist: 170,          // 触发距离（中心距 px）
+  lungeWindupTicks: 21,    // 蓄势时长（0.35s，高于人类约 0.25s 反应时间）：减速 + 快速对准玩家
+  lungeWindupSpeed: 0.55,  // 蓄势期速度倍率
+  lungeStrikeTicks: 30,    // 猛冲时长（0.5s）：持续追踪玩家
+  lungeStrikeBoost: 1.9,   // 猛冲起步速度倍率，按 (剩余/总时长)^2 衰减回 1
+  lungeTurnFactor: 3,      // 蓄势/猛冲期间转向速度倍率
+  lungeCooldownTicks: 180, // 扑击结束后冷却（3s）
 
   // AI 互吞（让场景活起来）：只吃比自己至少低 1 级，不给分
   gridCell: 180,           // 空间网格边长（AI 互吞碰撞用）

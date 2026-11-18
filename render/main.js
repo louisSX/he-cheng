@@ -1,6 +1,6 @@
 // 渲染层入口（SPEC Part 2.1）：只读 core 状态 + 绘制，不写游戏逻辑。
 import { Game } from '../core/game.js';
-import { CONFIG, EVOLUTION, MAX_LEVEL } from '../core/constants.js';
+import { CONFIG, EVOLUTION, GAIT } from '../core/constants.js';
 import { createCamera } from './camera.js';
 import { createInput } from './input.js';
 import {
@@ -138,21 +138,78 @@ function drawBackground() {
 
 // 生物动画类型配置（按 level）：每种生物有符合物种的游动姿态（用户需求 2026-08-06）
 // 新素材统一使用严格俯视六帧；fallback 仅在对应序列加载失败时启用旧单图动画。
+// freq 统一取自 core GAIT（划水节奏同时驱动真实速度起伏，SPEC 2.1 禁止双常量）；
+// 真实加减速已由 core 步态承担，surge 只保留轻微视觉前冲。
+// bend：转弯时身体弯曲程度（0 = 硬壳/四肢型不弯）。
 const ANIM = [
-  { type: 'tadpole-swim', freq: 1.35, surge: 0.10, yaw: 0.018 },         // 0 蝌蚪：快速双侧摆尾，身体只做轻微反向偏航
-  { type: 'frog-swim', freq: 1.05, surge: 0.22 },                        // 1 青蛙：六帧俯视蛙泳（周期约 1.25s）
-  { type: 'keyframe-swim', motion: 'limb', freq: 1.15, surge: 0.12, yaw: 0.006, extent: 1.95, fallback: 'sway', rock: 0.12, bob: 0.05, squash: 0.12 }, // 2 龙虾
-  { type: 'carp-swim', freq: 0.95, surge: 0.08, yaw: 0.012 },            // 3 鲤鱼：稳定躯干、低频双侧摆尾
-  { type: 'keyframe-swim', motion: 'limb', freq: 0.72, surge: 0.08, yaw: 0.004, extent: 1.95, fallback: 'sway', rock: 0.07, bob: 0.08, squash: 0.03 }, // 4 乌龟
-  { type: 'keyframe-swim', motion: 'lateral', freq: 0.82, surge: 0.06, yaw: 0.016, extent: 2.05, fallback: 'wave', tailAmp: 0.85 }, // 5 鳄鱼
-  { type: 'keyframe-swim', motion: 'lateral', freq: 1.55, surge: 0.08, yaw: 0.010, extent: 2.00, fallback: 'wave', tailAmp: 1.25 }, // 6 鲨鱼
-  { type: 'keyframe-swim', motion: 'axial', freq: 0.78, surge: 0.06, yaw: 0.003, extent: 2.00, fallback: 'pitch', bob: 0.12, pitch: 0.08 }, // 7 鲸鱼
-  { type: 'keyframe-swim', motion: 'serpentine', freq: 0.70, surge: 0.06, yaw: 0.010, extent: 2.10, fallback: 'wave', tailAmp: 1.35 }, // 8 青龙
-  { type: 'keyframe-swim', motion: 'serpentine', freq: 0.58, surge: 0.05, yaw: 0.008, extent: 2.10, fallback: 'wave', tailAmp: 1.45 }, // 9 红龙
-  { type: 'keyframe-swim', motion: 'tentacle', freq: 0.66, surge: 0.06, yaw: 0.006, extent: 2.05, fallback: 'wave', tailAmp: 1.1, bob: 0.10 }, // 10 深海巨兽
-];
+  { type: 'tadpole-swim', surge: 0.05, yaw: 0.018, bend: 1.0 },         // 0 蝌蚪：快速双侧摆尾，身体只做轻微反向偏航
+  { type: 'frog-swim', surge: 0.10, bend: 0 },                            // 1 青蛙：六帧俯视蛙泳
+  { type: 'keyframe-swim', motion: 'limb', surge: 0.06, yaw: 0.006, extent: 1.95, bend: 0, fallback: 'sway', rock: 0.12, bob: 0.05, squash: 0.12 }, // 2 龙虾
+  { type: 'carp-swim', surge: 0.04, yaw: 0.012, bend: 0.8 },             // 3 鲤鱼：稳定躯干、低频双侧摆尾
+  { type: 'keyframe-swim', motion: 'limb', surge: 0.04, yaw: 0.004, extent: 1.95, bend: 0, fallback: 'sway', rock: 0.07, bob: 0.08, squash: 0.03 }, // 4 乌龟
+  { type: 'keyframe-swim', motion: 'lateral', surge: 0.03, yaw: 0.016, extent: 2.05, bend: 0.6, fallback: 'wave', tailAmp: 0.85 }, // 5 鳄鱼
+  { type: 'keyframe-swim', motion: 'lateral', surge: 0.04, yaw: 0.010, extent: 2.00, bend: 0.7, fallback: 'wave', tailAmp: 1.25 }, // 6 鲨鱼
+  { type: 'keyframe-swim', motion: 'axial', surge: 0.03, yaw: 0.003, extent: 2.00, bend: 0.3, fallback: 'pitch', bob: 0.12, pitch: 0.08 }, // 7 鲸鱼
+  { type: 'keyframe-swim', motion: 'serpentine', surge: 0.03, yaw: 0.010, extent: 2.10, bend: 1.2, fallback: 'wave', tailAmp: 1.35 }, // 8 青龙
+  { type: 'keyframe-swim', motion: 'serpentine', surge: 0.03, yaw: 0.008, extent: 2.10, bend: 1.2, fallback: 'wave', tailAmp: 1.45 }, // 9 红龙
+  { type: 'keyframe-swim', motion: 'tentacle', surge: 0.03, yaw: 0.006, extent: 2.05, bend: 0.3, fallback: 'wave', tailAmp: 1.1, bob: 0.10 }, // 10 深海巨兽
+].map((a, level) => ({ ...a, freq: GAIT[level].freq }));
 
-function drawCreature(spr, x, y, radius, heading, animPhase, isPlayer, isThreat, level) {
+// —— 转弯弯身 ——
+const TAU = Math.PI * 2;
+const wrapAngle = (d) => d - TAU * Math.floor((d + Math.PI) / TAU);
+const lerpAngle = (a, b, t) => a + wrapAngle(b - a) * t;
+
+// 每个实体的平滑弯曲量（按 id 保存，每帧重建以清理已消失的生物）
+let bendState = new Map();
+let nextBendState = new Map();
+function bodyBend(key, prevHeading, curHeading, level, maxTurnDeg, dt) {
+  const k = ANIM[level]?.bend ?? 0;
+  const prev = bendState.get(key) ?? 0;
+  let target = 0;
+  if (k > 0) {
+    // 本 tick 实际转向角 / 该物种最大转向角 → -1..1（冲刺掉头时封顶）
+    const w = wrapAngle(curHeading - prevHeading) / (maxTurnDeg * Math.PI / 180);
+    target = Math.max(-1, Math.min(1, w)) * k;
+  }
+  const next = prev + (target - prev) * Math.min(1, dt * 10);
+  nextBendState.set(key, next);
+  return next;
+}
+
+// 在“头朝上”素材的局部坐标内绘制一帧。bend≠0 时沿身体长轴切成横条，
+// 按到锚点距离的平方做横向偏移 → 身体弯成弧线（头尾都偏向弯道内侧）。
+// 横向平移横条不会产生缝隙，比分段旋转更稳定。
+const BEND_STRIPS = 14;
+const BEND_MAX = 0.22; // 最大端点偏移 = 半身长 × 该比例
+function blitFrame(frame, scale, alpha, mirror, bend) {
+  const ax = frame.anchorX ?? frame.w / 2;
+  const ay = frame.anchorY ?? frame.h / 2;
+  ctx.save();
+  if (mirror) ctx.scale(-1, 1);
+  ctx.globalAlpha *= alpha;
+  if (Math.abs(bend) < 0.01) {
+    ctx.drawImage(frame.canvas, -ax * scale, -ay * scale, frame.w * scale, frame.h * scale);
+  } else {
+    // 镜像后局部 x 反向，偏移符号随之翻转，保证弯向与转向一致
+    const half = Math.max(ay, frame.h - ay);
+    const maxOff = half * scale * BEND_MAX * bend * (mirror ? -1 : 1);
+    const stripH = frame.h / BEND_STRIPS;
+    for (let i = 0; i < BEND_STRIPS; i++) {
+      const sy = i * stripH;
+      const sh = Math.min(stripH + 1, frame.h - sy); // 多取 1px 防接缝
+      const u = (sy + stripH / 2 - ay) / half;
+      ctx.drawImage(
+        frame.canvas,
+        0, sy, frame.w, sh,
+        -ax * scale + maxOff * u * u, (sy - ay) * scale, frame.w * scale, sh * scale
+      );
+    }
+  }
+  ctx.restore();
+}
+
+function drawCreature(spr, x, y, radius, heading, animPhase, isPlayer, isThreat, level, bend = 0, lunge = 0) {
   const visualR = UNIFORM_R; // 所有生物统一视觉尺寸
   const fit = (visualR * 2) / Math.max(spr.w, spr.h);
 
@@ -161,6 +218,16 @@ function drawCreature(spr, x, y, radius, heading, animPhase, isPlayer, isThreat,
   ctx.arc(x, y, visualR * 1.18, 0, Math.PI * 2);
   ctx.fillStyle = isPlayer ? 'rgba(255, 248, 215, 0.5)' : 'rgba(205, 240, 255, 0.3)';
   ctx.fill();
+
+  // 扑击预警：蓄势期红圈快速脉动（给玩家 0.2s 反应窗口），猛冲期保留淡红圈
+  if (lunge === 1 || lunge === 2) {
+    const pulse = lunge === 1 ? 0.6 + 0.4 * Math.sin(performance.now() / 40) : 0.35;
+    ctx.beginPath();
+    ctx.arc(x, y, visualR * 1.3, 0, Math.PI * 2);
+    ctx.strokeStyle = `rgba(255, 50, 50, ${pulse})`;
+    ctx.lineWidth = lunge === 1 ? 4 : 2.5;
+    ctx.stroke();
+  }
 
   // 捕食者标记：比玩家大的生物头顶红色三角（尺寸统一后靠标记识别天敌）
   if (isThreat) {
@@ -187,10 +254,10 @@ function drawCreature(spr, x, y, radius, heading, animPhase, isPlayer, isThreat,
 
   if (a.type === 'wave') drawWaveBody(spr, x, y, visualR, flip, base, animPhase, a);
   else if (a.type === 'frog-swim') drawFrogSwim(spr, x, y, visualR, heading, animPhase, a);
-  else if (a.type === 'tadpole-swim') drawTadpoleSwim(spr, x, y, visualR, heading, animPhase, a);
-  else if (a.type === 'carp-swim') drawCarpSwim(spr, x, y, visualR, heading, animPhase, a);
+  else if (a.type === 'tadpole-swim') drawTadpoleSwim(spr, x, y, visualR, heading, animPhase, a, bend);
+  else if (a.type === 'carp-swim') drawCarpSwim(spr, x, y, visualR, heading, animPhase, a, bend);
   else if (a.type === 'keyframe-swim') {
-    drawCreatureKeyframes(spr, x, y, visualR, heading, animPhase, a, level, flip, base, fit);
+    drawCreatureKeyframes(spr, x, y, visualR, heading, animPhase, a, level, flip, base, fit, bend);
   }
   else if (a.type === 'pitch') drawPitch(spr, x, y, visualR, flip, base, animPhase, a, fit);
   else drawSway(spr, x, y, visualR, flip, base, animPhase, a, fit);
@@ -264,7 +331,7 @@ function sampleCreatureTimeline(frames, t) {
   return { cur: frames[0], next: frames[0], mix: 0 };
 }
 
-function drawCreatureKeyframes(spr, x, y, size, heading, phase, a, level, flip, base, fit) {
+function drawCreatureKeyframes(spr, x, y, size, heading, phase, a, level, flip, base, fit, bend) {
   const set = CREATURE_SWIM_SETS[level];
   const loadedFrames = set?.keys.map((key) => sprites.get(key)) ?? [];
 
@@ -295,25 +362,11 @@ function drawCreatureKeyframes(spr, x, y, size, heading, phase, a, level, flip, 
   ctx.rotate(Math.PI / 2);
   ctx.scale(1 - breathe * 0.5, 1 + breathe);
 
-  const baseAlpha = ctx.globalAlpha;
-  const drawFrame = (frame, alpha) => {
-    const anchorX = frame.anchorX ?? frame.w / 2;
-    const anchorY = frame.anchorY ?? frame.h / 2;
-    ctx.globalAlpha = baseAlpha * alpha;
-    ctx.drawImage(
-      frame.canvas,
-      -anchorX * frameScale,
-      -anchorY * frameScale,
-      frame.w * frameScale,
-      frame.h * frameScale
-    );
-  };
-
   if (cur === next) {
-    drawFrame(cur, 1);
+    blitFrame(cur, frameScale, 1, false, bend);
   } else {
-    drawFrame(cur, 1 - mix);
-    drawFrame(next, mix);
+    blitFrame(cur, frameScale, 1 - mix, false, bend);
+    blitFrame(next, frameScale, mix, false, bend);
   }
   ctx.restore();
 }
@@ -436,7 +489,7 @@ const TADPOLE_SWIM_TIMELINE = [
   { at: 1.00, frame: 1, mirror: false },
 ];
 
-function drawTadpoleSwim(spr, x, y, size, heading, phase, a) {
+function drawTadpoleSwim(spr, x, y, size, heading, phase, a, bend) {
   // 归一化相位 T ∈ [0,1)
   const T = (((phase * a.freq) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2) / (Math.PI * 2);
 
@@ -462,28 +515,11 @@ function drawTadpoleSwim(spr, x, y, size, heading, phase, a) {
   ctx.translate(surge, 0);
   ctx.rotate(Math.PI / 2);
 
-  const baseAlpha = ctx.globalAlpha;
-  const drawFrame = (frame, alpha, mirror) => {
-    const anchorX = frame.anchorX ?? frame.w / 2;
-    const anchorY = frame.anchorY ?? frame.h / 2;
-    ctx.save();
-    if (mirror) ctx.scale(-1, 1);
-    ctx.globalAlpha = baseAlpha * alpha;
-    ctx.drawImage(
-      frame.canvas,
-      -anchorX * frameScale,
-      -anchorY * frameScale,
-      frame.w * frameScale,
-      frame.h * frameScale
-    );
-    ctx.restore();
-  };
-
   if (cur === next && curMirror === nextMirror) {
-    drawFrame(cur, 1, curMirror);
+    blitFrame(cur, frameScale, 1, curMirror, bend);
   } else {
-    drawFrame(cur, 1 - mix, curMirror);
-    drawFrame(next, mix, nextMirror);
+    blitFrame(cur, frameScale, 1 - mix, curMirror, bend);
+    blitFrame(next, frameScale, mix, nextMirror, bend);
   }
   ctx.restore();
 }
@@ -521,7 +557,7 @@ const CARP_SWIM_TIMELINE = [
   { at: 1.000, frame: 1, mirror: false },
 ];
 
-function drawCarpSwim(spr, x, y, size, heading, phase, a) {
+function drawCarpSwim(spr, x, y, size, heading, phase, a, bend) {
   // 归一化相位 T ∈ [0,1)
   const T = (((phase * a.freq) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2) / (Math.PI * 2);
 
@@ -545,28 +581,11 @@ function drawCarpSwim(spr, x, y, size, heading, phase, a) {
   ctx.translate(surge, 0);
   ctx.rotate(Math.PI / 2);
 
-  const baseAlpha = ctx.globalAlpha;
-  const drawFrame = (frame, alpha, mirror) => {
-    const anchorX = frame.anchorX ?? frame.w / 2;
-    const anchorY = frame.anchorY ?? frame.h / 2;
-    ctx.save();
-    if (mirror) ctx.scale(-1, 1);
-    ctx.globalAlpha = baseAlpha * alpha;
-    ctx.drawImage(
-      frame.canvas,
-      -anchorX * frameScale,
-      -anchorY * frameScale,
-      frame.w * frameScale,
-      frame.h * frameScale
-    );
-    ctx.restore();
-  };
-
   if (cur === next && curMirror === nextMirror) {
-    drawFrame(cur, 1, curMirror);
+    blitFrame(cur, frameScale, 1, curMirror, bend);
   } else {
-    drawFrame(cur, 1 - mix, curMirror);
-    drawFrame(next, mix, nextMirror);
+    blitFrame(cur, frameScale, 1 - mix, curMirror, bend);
+    blitFrame(next, frameScale, mix, nextMirror, bend);
   }
   ctx.restore();
 }
@@ -721,7 +740,7 @@ function render(dt) {
   const t = Math.min(1, (performance.now() - lastStepTime) / (FIXED_DT * 1000));
   const ix = prevP.x + (p.x - prevP.x) * t;
   const iy = prevP.y + (p.y - prevP.y) * t;
-  const iHeading = p.heading; // 朝向用最新（转向平滑由 core turnRate 保证）
+  const iHeading = lerpAngle(prevP.heading, p.heading, t); // 朝向同样插值，转身无步进台阶
   const iRadius = p.radius;
   const iPhase = prevP.animPhase + (p.animPhase - prevP.animPhase) * t;
 
@@ -740,17 +759,19 @@ function render(dt) {
     const cx = pc.x + (c.x - pc.x) * t;
     const cy = pc.y + (c.y - pc.y) * t;
     const ph = pc.animPhase + (c.animPhase - pc.animPhase) * t;
-    drawCreature(spr, cx, cy, UNIFORM_R, c.heading, ph, false, c.level > p.level, c.level);
+    const hd = lerpAngle(pc.heading, c.heading, t);
+    const bend = bodyBend(c.id, pc.heading, c.heading, c.level, GAIT[c.level].turnDeg, dt);
+    drawCreature(spr, cx, cy, UNIFORM_R, hd, ph, false, c.level > p.level, c.level, bend, c.lunge);
   }
   // 复活无敌：玩家闪烁（保护中）
+  const playerBend = bodyBend('player', prevP.heading, p.heading, p.level, CONFIG.turnRateDeg, dt);
   const invulnerable = curSnap.invulnerableTicks > 0;
-  if (invulnerable) {
-    ctx.globalAlpha = 0.35 + 0.3 * Math.sin(performance.now() / 90);
-    drawCreature(sprites.get(p.level), ix, iy, UNIFORM_R, iHeading, iPhase, true, false, p.level);
-    ctx.globalAlpha = 1;
-  } else {
-    drawCreature(sprites.get(p.level), ix, iy, UNIFORM_R, iHeading, iPhase, true, false, p.level);
-  }
+  if (invulnerable) ctx.globalAlpha = 0.35 + 0.3 * Math.sin(performance.now() / 90);
+  drawCreature(sprites.get(p.level), ix, iy, UNIFORM_R, iHeading, iPhase, true, false, p.level, playerBend);
+  ctx.globalAlpha = 1;
+  // 交换弯曲状态表：本帧未出现的生物（被吃/消失）自动清理
+  [bendState, nextBendState] = [nextBendState, bendState];
+  nextBendState.clear();
 
   // 屏幕空间特效
   ctx.setTransform(1, 0, 0, 1, 0, 0);

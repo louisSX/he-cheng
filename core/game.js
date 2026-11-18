@@ -1,11 +1,38 @@
 // 纯游戏逻辑（SPEC Part 2.1）：无渲染依赖，Node 可跑，确定性，可播种。
 // 只有因果事件才计分（吃/进化），绝不按输入事实计分（SPEC 2.11 门槛）。
 
-import { CONFIG, EVOLUTION, MAX_LEVEL, MAX_PLAYER_LEVEL } from './constants.js';
+import { CONFIG, EVOLUTION, GAIT, MAX_LEVEL, MAX_PLAYER_LEVEL } from './constants.js';
 import { mulberry32 } from './rng.js';
 
 const D2R = Math.PI / 180;
+const TAU = Math.PI * 2;
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
+const frac = (v) => v - Math.floor(v);
+
+// 步态脉冲：单拍内以 peak 为中心的环绕高斯（0..1）
+function gaitPulse(u, g) {
+  let d = Math.abs(u - g.peak);
+  d = Math.min(d, 1 - d);
+  return Math.exp(-(d / g.width) * (d / g.width));
+}
+// 各等级脉冲均值（数值积分），用于让速度倍率均值恒为 1 → 平均速度与平衡不受步态影响
+const GAIT_MEAN = GAIT.map((g) => {
+  const N = 512;
+  let s = 0;
+  for (let i = 0; i < N; i++) s += gaitPulse(i / N, g);
+  return s / N;
+});
+
+// 划水节奏带来的瞬时速度倍率。相位定义与渲染层关键帧一致：T = frac(phase * freq / 2π)
+export function gaitMultiplier(level, phase) {
+  const g = GAIT[level];
+  const T = frac((phase * g.freq) / TAU);
+  const u = frac(T * g.beats);
+  return 1 + g.amp * (gaitPulse(u, g) - GAIT_MEAN[level]);
+}
+
+// 摆尾相位推进量：只随名义速度与冲刺倍率变化（不含步态起伏，保证时间平均 = 相位平均）
+const phaseStep = (nominalSpeed, boostMul) => (0.04 + nominalSpeed * 0.0003) * boostMul;
 
 export class Game {
   constructor(seed) {
@@ -135,15 +162,21 @@ export class Game {
       const minGap = r * CONFIG.spawnMinGapFactor + nearestR;
       if (minDist2 < minGap * minGap) continue;
       if (x < r || x > W - r || y < r || y > H - r) continue;
+      const heading = this.rng() * Math.PI * 2;
       const c = {
         id: this._nextCreatureId++,
         x,
         y,
         level,
-        heading: this.rng() * Math.PI * 2,
+        heading,
+        targetHeading: heading, // AI 决策只改目标朝向，实际朝向按物种转向速度逐 tick 追随
         nextDecision: this.tick + 30 + Math.floor(this.rng() * 60),
         escapeCooldown: 0,
         escapeBoost: 0,
+        slipTicks: 0,
+        lungePhase: 0,    // 0 无 / 1 蓄势 / 2 猛冲
+        lungeTicks: 0,
+        lungeCooldown: 0,
         animPhase: this.rng() * Math.PI * 2,
         dead: false,
       };
@@ -177,13 +210,14 @@ export class Game {
       target = Math.atan2(input.dy, input.dx);
     }
     p.heading = this._turnToward(p.heading, target, CONFIG.turnRateDeg * D2R);
-    const speed = this.playerSpeed();
+    const nominal = this.playerSpeed();
+    const speed = nominal * gaitMultiplier(p.level, p.animPhase); // 蹬水/摆尾发力时加速，滑行时减速
     p.x += Math.cos(p.heading) * speed * CONFIG.fixedDt;
     p.y += Math.sin(p.heading) * speed * CONFIG.fixedDt;
     const r = this.radiusOf(p.level);
     p.x = clamp(p.x, r, CONFIG.worldWidth - r);
     p.y = clamp(p.y, r, CONFIG.worldHeight - r);
-    p.animPhase += 0.04 + speed * 0.0003; // 游动摆尾相位（渲染层据此画摇摆）
+    p.animPhase += phaseStep(nominal, 1); // 游动摆尾相位（渲染层据此播放关键帧）
   }
 
   _turnToward(cur, target, maxStep) {
@@ -202,7 +236,7 @@ export class Game {
     // 碰撞半径统一用视觉半径（24）：视觉接触 = 碰撞触发，等级差异由吃/死判定体现
     const eatD = (CONFIG.visualRadius + CONFIG.visualRadius) * CONFIG.eatDistFactor;
     for (const c of this.creatures) {
-      if (c.dead) continue;
+      if (c.dead || c.slipTicks > 0) continue; // 刚挣脱的生物处于滑脱窗口，接触不判定
       const dx = c.x - p.x;
       const dy = c.y - p.y;
       if (dx * dx + dy * dy > eatD * eatD) continue;
@@ -239,13 +273,15 @@ export class Game {
     if (p.progress >= CONFIG.progressToEvolve) this._evolve();
   }
 
+  // 挣脱：不再瞬移，而是掉头背离玩家 + 爆发冲刺游走；滑脱窗口内玩家接触不判定
   _escape(c) {
-    const ang = this.rng() * Math.PI * 2;
-    const dist = CONFIG.escapeDist[0] + this.rng() * (CONFIG.escapeDist[1] - CONFIG.escapeDist[0]);
-    c.x += Math.cos(ang) * dist;
-    c.y += Math.sin(ang) * dist;
+    const p = this.player;
+    const away = Math.atan2(c.y - p.y, c.x - p.x);
+    c.targetHeading = away + (this.rng() - 0.5) * CONFIG.escapeJitter;
     c.escapeCooldown = CONFIG.escapeCooldown;
     c.escapeBoost = CONFIG.escapeBoostTicks;
+    c.slipTicks = CONFIG.escapeSlipTicks;
+    c.nextDecision = this.tick + CONFIG.escapeBoostTicks; // 冲刺期间保持逃离方向，不被 AI 决策打断
     this._emit('escape', { level: c.level, x: c.x, y: c.y });
   }
 
@@ -286,25 +322,89 @@ export class Game {
 
   // —— AI ——
   _updateCreatures() {
+    const { worldWidth: W, worldHeight: H } = CONFIG;
     for (const c of this.creatures) {
       if (c.dead) continue;
       c.escapeCooldown = Math.max(0, c.escapeCooldown - 1);
       c.escapeBoost = Math.max(0, c.escapeBoost - 1);
-      if (this.tick >= c.nextDecision) {
+      c.slipTicks = Math.max(0, c.slipTicks - 1);
+      this._updateLunge(c);
+      if (c.lungePhase === 0 && this.tick >= c.nextDecision) {
         this._decideCreature(c);
         c.nextDecision = this.tick + CONFIG.aiTurnInterval[0] + Math.floor(this.rng() * (CONFIG.aiTurnInterval[1] - CONFIG.aiTurnInterval[0]));
       }
-      const speed = this.creatureSpeed(c) * (c.escapeBoost > 0 ? CONFIG.escapeBoostFactor : 1);
-      c.x += Math.cos(c.heading) * speed * CONFIG.fixedDt;
-      c.y += Math.sin(c.heading) * speed * CONFIG.fixedDt;
-      // 边界反弹
       const r = this.radiusOf(c.level);
-      if (c.x < r) { c.x = r; c.heading = Math.PI - c.heading; }
-      else if (c.x > CONFIG.worldWidth - r) { c.x = CONFIG.worldWidth - r; c.heading = Math.PI - c.heading; }
-      if (c.y < r) { c.y = r; c.heading = -c.heading; }
-      else if (c.y > CONFIG.worldHeight - r) { c.y = CONFIG.worldHeight - r; c.heading = -c.heading; }
-      c.animPhase += 0.04 + speed * 0.0003; // 游动摆尾相位（渲染层据此画摇摆）
+      this._steerFromWalls(c, r);
+
+      // 挣脱冲刺：起步猛冲、按三次方衰减回到常规加速
+      let boostMul = 1;
+      let turnMul = 1;
+      if (c.escapeBoost > 0) {
+        const k = c.escapeBoost / CONFIG.escapeBoostTicks;
+        boostMul = CONFIG.escapeBoostFactor + CONFIG.escapeBurst * k * k * k;
+        turnMul = CONFIG.escapeTurnFactor;
+      } else if (c.lungePhase === 1) {
+        boostMul = CONFIG.lungeWindupSpeed;
+        turnMul = CONFIG.lungeTurnFactor;
+      } else if (c.lungePhase === 2) {
+        const k = c.lungeTicks / CONFIG.lungeStrikeTicks;
+        boostMul = 1 + (CONFIG.lungeStrikeBoost - 1) * k * k;
+        turnMul = CONFIG.lungeTurnFactor;
+      }
+      // 平滑转向：按物种转向速度追随目标朝向（体型越大转身越慢），冲刺/扑击期间转向加快
+      const turn = GAIT[c.level].turnDeg * D2R * turnMul;
+      c.heading = this._turnToward(c.heading, c.targetHeading, turn);
+
+      const nominal = this.creatureSpeed(c);
+      const speed = nominal * boostMul * gaitMultiplier(c.level, c.animPhase);
+      c.x = clamp(c.x + Math.cos(c.heading) * speed * CONFIG.fixedDt, r, W - r);
+      c.y = clamp(c.y + Math.sin(c.heading) * speed * CONFIG.fixedDt, r, H - r);
+      c.animPhase += phaseStep(nominal, boostMul); // 冲刺时划水更急
     }
+  }
+
+  // 捕食者扑击状态机：蓄势（减速对准）→ 猛冲（追踪玩家）→ 冷却
+  _updateLunge(c) {
+    const p = this.player;
+    if (c.lungeCooldown > 0) c.lungeCooldown--;
+    if (c.lungePhase !== 0) {
+      // 玩家进化到同级/以上或进入无敌 → 中止扑击
+      if (c.level <= p.level || this.invulnerableTicks > 0) {
+        c.lungePhase = 0;
+        c.lungeCooldown = CONFIG.lungeCooldownTicks;
+        return;
+      }
+      c.targetHeading = Math.atan2(p.y - c.y, p.x - c.x); // 全程追踪玩家
+      if (--c.lungeTicks > 0) return;
+      if (c.lungePhase === 1) {
+        c.lungePhase = 2;
+        c.lungeTicks = CONFIG.lungeStrikeTicks;
+        this._emit('lunge', { level: c.level, player_level: p.level });
+      } else {
+        c.lungePhase = 0;
+        c.lungeCooldown = CONFIG.lungeCooldownTicks;
+      }
+      return;
+    }
+    if (p.level < CONFIG.lungeMinPlayerLevel) return; // 新手期不启用扑击（同高 2 级威胁的中后期解锁原则）
+    if (c.level <= p.level || c.lungeCooldown > 0 || c.escapeBoost > 0 || this.invulnerableTicks > 0) return;
+    const dx = p.x - c.x;
+    const dy = p.y - c.y;
+    if (dx * dx + dy * dy < CONFIG.lungeDist * CONFIG.lungeDist) {
+      c.lungePhase = 1;
+      c.lungeTicks = CONFIG.lungeWindupTicks;
+      c.targetHeading = Math.atan2(dy, dx);
+    }
+  }
+
+  // 近墙转向：目标朝向指向墙时镜像到离墙方向，由平滑转向完成转身（替代瞬间反弹）
+  _steerFromWalls(c, r) {
+    const m = CONFIG.aiWallMargin + r;
+    let tx = Math.cos(c.targetHeading);
+    let ty = Math.sin(c.targetHeading);
+    if ((c.x < m && tx < 0) || (c.x > CONFIG.worldWidth - m && tx > 0)) tx = -tx;
+    if ((c.y < m && ty < 0) || (c.y > CONFIG.worldHeight - m && ty > 0)) ty = -ty;
+    c.targetHeading = Math.atan2(ty, tx);
   }
 
   _decideCreature(c) {
@@ -344,12 +444,13 @@ export class Game {
       nearestBigger = { x: p.x, y: p.y };
     }
 
+    // 只设定目标朝向，实际转身在 _updateCreatures 中按转向速度平滑完成
     if (nearestBigger && (!nearestSmaller || dBig < dSmall * 1.2)) {
-      c.heading = Math.atan2(c.y - nearestBigger.y, c.x - nearestBigger.x);
+      c.targetHeading = Math.atan2(c.y - nearestBigger.y, c.x - nearestBigger.x);
     } else if (nearestSmaller) {
-      c.heading = Math.atan2(nearestSmaller.y - c.y, nearestSmaller.x - c.x);
+      c.targetHeading = Math.atan2(nearestSmaller.y - c.y, nearestSmaller.x - c.x);
     } else {
-      c.heading += (this.rng() - 0.5) * CONFIG.aiCruiseTurn;
+      c.targetHeading = c.heading + (this.rng() - 0.5) * CONFIG.aiCruiseTurn;
     }
   }
 
@@ -459,6 +560,7 @@ export class Game {
           radius: this.radiusOf(c.level),
           heading: c.heading,
           animPhase: c.animPhase,
+          lunge: c.lungePhase, // 屏幕上可见（蓄势红圈 / 猛冲），属于可见状态
         })),
       bounds: { width: CONFIG.worldWidth, height: CONFIG.worldHeight },
     };

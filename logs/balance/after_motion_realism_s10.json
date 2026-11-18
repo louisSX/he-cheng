@@ -1,0 +1,214 @@
+{
+  "version": "1.0",
+  "timestamp_utc": "2026-09-23T10:31:36.687Z",
+  "run_config": {
+    "seed_set": [
+      2001,
+      2002,
+      2003,
+      2004,
+      2005,
+      2006,
+      2007,
+      2008,
+      2009,
+      2010
+    ],
+    "fixed_dt": 0.016666666666666666,
+    "max_ticks": 3600,
+    "policy_budget": "variants=20 per seed for exploratory",
+    "input_schema": {
+      "move_x": {
+        "type": "axis",
+        "range": [
+          -1,
+          1
+        ],
+        "neutral": 0
+      },
+      "move_y": {
+        "type": "axis",
+        "range": [
+          -1,
+          1
+        ],
+        "neutral": 0
+      }
+    },
+    "visible_state_schema": [
+      "player_position",
+      "player_level",
+      "player_radius",
+      "progress",
+      "creatures",
+      "bounds"
+    ],
+    "policy_visibility": {
+      "no_input": [],
+      "fixed_direction": [],
+      "greedy_nearest_prey": [
+        "player_position",
+        "creatures"
+      ],
+      "greedy_nearest_same": [
+        "player_position",
+        "creatures"
+      ],
+      "exploratory": [
+        "player_position",
+        "player_level",
+        "player_radius",
+        "progress",
+        "creatures",
+        "bounds"
+      ]
+    }
+  },
+  "monotonous": {
+    "cases": {
+      "no_input": {
+        "score": 12,
+        "elapsed": 60,
+        "ended": true
+      },
+      "fixed_direction": {
+        "score": 4,
+        "elapsed": 20.116666666666667,
+        "ended": true
+      },
+      "greedy_nearest_prey": {
+        "score": 50,
+        "elapsed": 60,
+        "ended": true
+      },
+      "greedy_nearest_same": {
+        "score": 68,
+        "elapsed": 60,
+        "ended": true
+      }
+    },
+    "max_score": 68
+  },
+  "exploratory": {
+    "best": {
+      "score": 69,
+      "elapsed": 60,
+      "ended": true
+    },
+    "best_seed": 2009,
+    "best_variant": 3
+  },
+  "exploratory_ratio": 1.0147058823529411,
+  "telemetry": {
+    "death_analysis": {
+      "total": 69,
+      "game_over_runs": 69,
+      "by_player_level": {
+        "0": 38,
+        "1": 17,
+        "2": 6,
+        "3": 6,
+        "4": 2
+      },
+      "by_predator_level": {
+        "1": 36,
+        "2": 19,
+        "3": 6,
+        "4": 5,
+        "5": 2,
+        "6": 1
+      },
+      "by_cause": {
+        "eaten": 69
+      },
+      "position_grid_4x4": [
+        1,
+        2,
+        7,
+        1,
+        2,
+        16,
+        9,
+        2,
+        1,
+        15,
+        2,
+        4,
+        2,
+        2,
+        2,
+        1
+      ],
+      "deaths_with_recent_input": 0,
+      "death_rate": 0.2875
+    },
+    "spawn_analysis": {
+      "total": 68674,
+      "by_level": [
+        34337,
+        17745,
+        13520,
+        1783,
+        946,
+        277,
+        53,
+        13,
+        0,
+        0,
+        0
+      ],
+      "min_dist_to_player": 40.442751933138815,
+      "max_dist_to_player": 2752.0225950541467,
+      "avg_dist_to_player": 1096.0294935995341,
+      "safety_factor_applied": 3
+    },
+    "scoring_analysis": {
+      "total_score_all_runs": 5422,
+      "by_reason": {
+        "prey": {
+          "count": 1140,
+          "sum": 1140
+        },
+        "same": {
+          "count": 1261,
+          "sum": 2522
+        },
+        "evolve": {
+          "count": 352,
+          "sum": 1760
+        }
+      },
+      "scoring_routes": 3,
+      "score_is_input_fact": false
+    },
+    "input_analysis": {
+      "per_policy": {
+        "no_input": {
+          "changes": 0,
+          "ticks": 26680,
+          "runs": 10
+        },
+        "fixed_direction": {
+          "changes": 0,
+          "ticks": 26426,
+          "runs": 10
+        },
+        "greedy_nearest_prey": {
+          "changes": 19311,
+          "ticks": 27625,
+          "runs": 10
+        },
+        "greedy_nearest_same": {
+          "changes": 25468,
+          "ticks": 27904,
+          "runs": 10
+        },
+        "exploratory": {
+          "changes": 591574,
+          "ticks": 591811,
+          "runs": 200
+        }
+      }
+    }
+  }
+}
